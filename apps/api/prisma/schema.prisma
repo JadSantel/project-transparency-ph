@@ -1,0 +1,458 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// =============================================================================
+// GEOGRAPHY HIERARCHY
+// Region -> Province -> City -> Barangay. Kept as its own normalized chain so
+// nationwide rollout later is a data import, not a schema change.
+// =============================================================================
+
+model Region {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  code      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  provinces Province[]
+
+  @@index([deletedAt])
+  @@map("regions")
+}
+
+model Province {
+  id        String    @id @default(uuid()) @db.Uuid
+  regionId  String    @map("region_id") @db.Uuid
+  name      String
+  code      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  region Region @relation(fields: [regionId], references: [id])
+  cities City[]
+
+  @@index([regionId])
+  @@index([deletedAt])
+  @@map("provinces")
+}
+
+model City {
+  id                String    @id @default(uuid()) @db.Uuid
+  provinceId        String    @map("province_id") @db.Uuid
+  name              String
+  code              String    @unique
+  isHighlyUrbanized Boolean   @default(false) @map("is_highly_urbanized")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  province  Province   @relation(fields: [provinceId], references: [id])
+  barangays Barangay[]
+  agencies  Agency[]
+  projects  Project[]
+
+  @@index([provinceId])
+  @@index([deletedAt])
+  @@map("cities")
+}
+
+model Barangay {
+  id        String    @id @default(uuid()) @db.Uuid
+  cityId    String    @map("city_id") @db.Uuid
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  city     City      @relation(fields: [cityId], references: [id])
+  projects Project[]
+
+  @@index([cityId])
+  @@index([deletedAt])
+  @@map("barangays")
+}
+
+// =============================================================================
+// ORGANIZATIONS
+// =============================================================================
+
+enum AgencyType {
+  NATIONAL
+  REGIONAL
+  PROVINCIAL
+  CITY
+  MUNICIPAL
+}
+
+model Agency {
+  id                 String     @id @default(uuid()) @db.Uuid
+  parentAgencyId     String?    @map("parent_agency_id") @db.Uuid
+  jurisdictionCityId String?    @map("jurisdiction_city_id") @db.Uuid
+  name               String
+  acronym            String?
+  type               AgencyType
+  website            String?
+  logoUrl            String?    @map("logo_url")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  deletedAt          DateTime?  @map("deleted_at")
+
+  parentAgency     Agency?   @relation("AgencyHierarchy", fields: [parentAgencyId], references: [id])
+  childAgencies    Agency[]  @relation("AgencyHierarchy")
+  jurisdictionCity City?     @relation(fields: [jurisdictionCityId], references: [id])
+  projects         Project[]
+
+  @@index([parentAgencyId])
+  @@index([jurisdictionCityId])
+  @@index([deletedAt])
+  @@map("agencies")
+}
+
+model Contractor {
+  id                 String    @id @default(uuid()) @db.Uuid
+  name               String
+  registrationNumber String?   @map("registration_number")
+  contactInfo        Json?     @map("contact_info")
+  address            String?
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  projects Project[]
+
+  @@index([deletedAt])
+  @@map("contractors")
+}
+
+model Consultant {
+  id                 String    @id @default(uuid()) @db.Uuid
+  name               String
+  registrationNumber String?   @map("registration_number")
+  contactInfo        Json?     @map("contact_info")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  projects Project[]
+
+  @@index([deletedAt])
+  @@map("consultants")
+}
+
+// =============================================================================
+// USERS
+// =============================================================================
+
+enum UserRole {
+  CITIZEN
+  MODERATOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  passwordHash    String?   @map("password_hash")
+  googleId        String?   @unique @map("google_id")
+  fullName        String    @map("full_name")
+  avatarUrl       String?   @map("avatar_url")
+  role            UserRole  @default(CITIZEN)
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  citizenReports   CitizenReport[]
+  moderatedReports CitizenReport[] @relation("ReportModerator")
+  bookmarks        Bookmark[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  projectUpdates   ProjectUpdate[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+// =============================================================================
+// PROJECTS - the core domain entity
+// =============================================================================
+
+enum ProjectCategory {
+  ROAD
+  BRIDGE
+  HOSPITAL
+  SCHOOL
+  DRAINAGE
+  FLOOD_CONTROL
+  BUILDING
+  WATER
+  POWER
+  TRANSPORTATION
+}
+
+enum ProjectStatus {
+  PLANNING
+  PROCUREMENT
+  ONGOING
+  PAUSED
+  DELAYED
+  COMPLETED
+  CANCELLED
+}
+
+model Project {
+  id          String @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String @unique
+  description String
+
+  // PostGIS point geometry. Not queryable/writable through normal Prisma
+  // Client calls (Unsupported types are excluded from the generated API) -
+  // reads/writes go through $queryRaw / $executeRaw with ST_* functions,
+  // implemented in the repository layer in Phase 2.
+  location Unsupported("geometry(Point, 4326)")
+
+  barangayId String @map("barangay_id") @db.Uuid
+
+  // Denormalized from barangay -> city -> region, kept in sync on write in
+  // the service layer. Deliberate: city/region filtering is the single
+  // highest-traffic query in this app, and a 3-way join on every map load
+  // isn't worth avoiding two extra indexed columns.
+  cityId   String @map("city_id") @db.Uuid
+  regionId String @map("region_id") @db.Uuid
+
+  category ProjectCategory
+  status   ProjectStatus   @default(PLANNING)
+
+  budget        Decimal @db.Decimal(15, 2)
+  fundingSource String? @map("funding_source")
+
+  implementingAgencyId String  @map("implementing_agency_id") @db.Uuid
+  contractorId         String? @map("contractor_id") @db.Uuid
+  consultantId          String? @map("consultant_id") @db.Uuid
+
+  startDate        DateTime? @map("start_date") @db.Date
+  targetCompletion DateTime? @map("target_completion") @db.Date
+  actualCompletion DateTime? @map("actual_completion") @db.Date
+
+  progressPercentage Int @default(0) @map("progress_percentage")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  barangay           Barangay    @relation(fields: [barangayId], references: [id])
+  city               City        @relation(fields: [cityId], references: [id])
+  implementingAgency Agency      @relation(fields: [implementingAgencyId], references: [id])
+  contractor         Contractor? @relation(fields: [contractorId], references: [id])
+  consultant         Consultant? @relation(fields: [consultantId], references: [id])
+
+  updates        ProjectUpdate[]
+  images         ProjectImage[]
+  documents      ProjectDocument[]
+  citizenReports CitizenReport[]
+  bookmarks      Bookmark[]
+
+  @@index([status, cityId])
+  @@index([implementingAgencyId])
+  @@index([contractorId])
+  @@index([category])
+  @@index([regionId])
+  @@index([deletedAt])
+  @@map("projects")
+}
+
+enum ProjectUpdateType {
+  MILESTONE
+  PROGRESS
+  STATUS_CHANGE
+}
+
+model ProjectUpdate {
+  id             String            @id @default(uuid()) @db.Uuid
+  projectId      String            @map("project_id") @db.Uuid
+  type           ProjectUpdateType @default(MILESTONE)
+  title          String
+  description    String
+  progressAtTime Int?              @map("progress_at_time")
+  updateDate     DateTime          @map("update_date") @db.Date
+  source         String?
+  createdById    String?           @map("created_by") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  deletedAt      DateTime?         @map("deleted_at")
+
+  project   Project        @relation(fields: [projectId], references: [id])
+  createdBy User?          @relation(fields: [createdById], references: [id])
+  images    ProjectImage[]
+
+  @@index([projectId, updateDate])
+  @@index([deletedAt])
+  @@map("project_updates")
+}
+
+model ProjectImage {
+  id              String    @id @default(uuid()) @db.Uuid
+  projectId       String?   @map("project_id") @db.Uuid
+  projectUpdateId String?   @map("project_update_id") @db.Uuid
+  citizenReportId String?   @map("citizen_report_id") @db.Uuid
+  url             String
+  caption         String?
+  isHero          Boolean   @default(false) @map("is_hero")
+  orderIndex      Int       @default(0) @map("order_index")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  project       Project?       @relation(fields: [projectId], references: [id])
+  projectUpdate ProjectUpdate? @relation(fields: [projectUpdateId], references: [id])
+  citizenReport CitizenReport? @relation(fields: [citizenReportId], references: [id])
+
+  @@index([projectId])
+  @@index([projectUpdateId])
+  @@index([citizenReportId])
+  @@index([deletedAt])
+  @@map("project_images")
+}
+
+enum ProjectDocumentType {
+  CONTRACT
+  PERMIT
+  REPORT
+  PLAN
+  OTHER
+}
+
+model ProjectDocument {
+  id           String              @id @default(uuid()) @db.Uuid
+  projectId    String              @map("project_id") @db.Uuid
+  url          String
+  title        String
+  documentType ProjectDocumentType @default(OTHER) @map("document_type")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  deletedAt    DateTime?           @map("deleted_at")
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([deletedAt])
+  @@map("project_documents")
+}
+
+// =============================================================================
+// CITIZEN REPORTS - supplementary only, never replaces official data
+// =============================================================================
+
+enum CitizenReportCategory {
+  NO_ACTIVITY
+  ROAD_DAMAGE
+  SAFETY_ISSUE
+  DELAY
+  COMPLETED
+  OTHER
+}
+
+enum CitizenReportStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CitizenReport {
+  id        String                @id @default(uuid()) @db.Uuid
+  projectId String                @map("project_id") @db.Uuid
+  userId    String                @map("user_id") @db.Uuid
+  category  CitizenReportCategory
+  comment   String?
+
+  // Captured independently of the project's own location, since a citizen
+  // reports from wherever they're actually standing - which may differ
+  // from the official project pin.
+  location Unsupported("geometry(Point, 4326)")?
+
+  status        CitizenReportStatus @default(PENDING)
+  moderatedById String?             @map("moderated_by") @db.Uuid
+  moderatedAt   DateTime?           @map("moderated_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  project     Project        @relation(fields: [projectId], references: [id])
+  user        User           @relation(fields: [userId], references: [id])
+  moderatedBy User?          @relation("ReportModerator", fields: [moderatedById], references: [id])
+  images      ProjectImage[]
+
+  @@index([projectId, status])
+  @@index([userId])
+  @@index([deletedAt])
+  @@map("citizen_reports")
+}
+
+// =============================================================================
+// USER-FACING FEATURES
+// =============================================================================
+
+model Bookmark {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([userId, projectId])
+  @@map("bookmarks")
+}
+
+model Notification {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  type             String
+  title            String
+  body             String
+  relatedProjectId String?   @map("related_project_id") @db.Uuid
+  isRead           Boolean   @default(false) @map("is_read")
+  readAt           DateTime? @map("read_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// =============================================================================
+// AUDIT LOG - polymorphic, covers every entity without a table per entity
+// =============================================================================
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id") @db.Uuid
+  changes    Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
