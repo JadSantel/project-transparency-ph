@@ -1,3 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+  }
+}
+
+/* MapLibre's own CSS ships unscoped, un-prefixed class names (.maplibregl-popup,
+   .maplibregl-ctrl, etc). A handful of overrides here keep those controls in
+   the ledger visual language instead of MapLibre's default rounded-blue look. */
+.maplibregl-popup-content {
+  padding: 0;
+  border-radius: 2px;
+  box-shadow: 0 4px 16px rgba(16, 26, 46, 0.18);
+  overflow: hidden;
+}
+
+.maplibregl-popup-close-button {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 18px;
+  color: #8891a3;
+  padding: 2px 8px;
+}
+
+.maplibregl-ctrl-attrib {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 11px;
+}

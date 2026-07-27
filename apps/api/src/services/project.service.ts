@@ -1,4 +1,9 @@
-import type { CreateProjectInput, ProjectQuery, UpdateProjectInput } from '@transparency-ph/shared-types';
+import type {
+  CreateProjectInput,
+  ProjectQuery,
+  ProjectUpdatesQuery,
+  UpdateProjectInput,
+} from '@transparency-ph/shared-types';
 import { AppError } from '../middlewares/errorHandler.js';
 import * as projectRepository from '../repositories/project.repository.js';
 import { slugify } from '../utils/slugify.js';
@@ -65,6 +70,27 @@ export async function getProject(idOrSlug: string) {
     throw new AppError('Project not found', 404);
   }
   return project;
+}
+
+export async function getProjectUpdates(idOrSlug: string, query: ProjectUpdatesQuery) {
+  // Resolve idOrSlug -> project first so an unknown slug 404s the same way
+  // getProject() does, rather than the repository silently returning an
+  // empty timeline for a project that doesn't exist.
+  const project = await projectRepository.findByIdOrSlug(idOrSlug);
+  if (!project) {
+    throw new AppError('Project not found', 404);
+  }
+
+  const { rows, total } = await projectRepository.findUpdatesByProjectId(project.id, query);
+  return {
+    data: rows,
+    meta: {
+      page: query.page,
+      limit: query.limit,
+      total,
+      totalPages: Math.ceil(total / query.limit),
+    },
+  };
 }
 
 export async function createProject(input: CreateProjectInput) {

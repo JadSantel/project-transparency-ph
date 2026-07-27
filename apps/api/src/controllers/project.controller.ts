@@ -1,4 +1,9 @@
-import type { CreateProjectInput, ProjectQuery, UpdateProjectInput } from '@transparency-ph/shared-types';
+import type {
+  CreateProjectInput,
+  ProjectQuery,
+  ProjectUpdatesQuery,
+  UpdateProjectInput,
+} from '@transparency-ph/shared-types';
 import { Request, Response } from 'express';
 import * as projectService from '../services/project.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -11,6 +16,11 @@ export const listProjects = asyncHandler(async (req: Request, res: Response) => 
 export const getProject = asyncHandler(async (req: Request, res: Response) => {
   const project = await projectService.getProject(req.params.idOrSlug);
   res.status(200).json({ data: project });
+});
+
+export const getProjectUpdates = asyncHandler(async (req: Request, res: Response) => {
+  const result = await projectService.getProjectUpdates(req.params.idOrSlug, req.query as unknown as ProjectUpdatesQuery);
+  res.status(200).json(result);
 });
 
 export const createProject = asyncHandler(async (req: Request, res: Response) => {

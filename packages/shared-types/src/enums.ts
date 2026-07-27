@@ -35,3 +35,30 @@ export const PROJECT_STATUSES = [
 ] as const;
 export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;
+
+// Mirrors schema.prisma's ProjectUpdateType enum on ProjectUpdate.
+export const PROJECT_UPDATE_TYPES = ['MILESTONE', 'PROGRESS', 'STATUS_CHANGE'] as const;
+export const projectUpdateTypeSchema = z.enum(PROJECT_UPDATE_TYPES);
+export type ProjectUpdateType = z.infer<typeof projectUpdateTypeSchema>;
+
+// Mirrors schema.prisma's UserRole enum on User.
+export const USER_ROLES = ['CITIZEN', 'MODERATOR', 'ADMIN', 'SUPER_ADMIN'] as const;
+export const userRoleSchema = z.enum(USER_ROLES);
+export type UserRole = z.infer<typeof userRoleSchema>;
+
+// Mirrors schema.prisma's CitizenReportCategory enum on CitizenReport.
+export const CITIZEN_REPORT_CATEGORIES = [
+  'NO_ACTIVITY',
+  'ROAD_DAMAGE',
+  'SAFETY_ISSUE',
+  'DELAY',
+  'COMPLETED',
+  'OTHER',
+] as const;
+export const citizenReportCategorySchema = z.enum(CITIZEN_REPORT_CATEGORIES);
+export type CitizenReportCategory = z.infer<typeof citizenReportCategorySchema>;
+
+// Mirrors schema.prisma's CitizenReportStatus enum on CitizenReport.
+export const CITIZEN_REPORT_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
+export const citizenReportStatusSchema = z.enum(CITIZEN_REPORT_STATUSES);
+export type CitizenReportStatus = z.infer<typeof citizenReportStatusSchema>;

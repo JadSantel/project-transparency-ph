@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import type { CreateProjectInput, ProjectQuery, UpdateProjectInput } from '@transparency-ph/shared-types';
+import type {
+  CreateProjectInput,
+  ProjectQuery,
+  ProjectUpdatesQuery,
+  UpdateProjectInput,
+} from '@transparency-ph/shared-types';
 import { prisma } from '../lib/prisma.js';
 
 export interface ProjectListItem {
@@ -32,6 +37,19 @@ export interface ProjectDetail extends ProjectListItem {
   implementingAgencyId: string;
   contractorId: string | null;
   consultantId: string | null;
+}
+
+export interface ProjectUpdateItem {
+  id: string;
+  projectId: string;
+  type: string;
+  title: string;
+  description: string;
+  progressAtTime: number | null;
+  updateDate: Date;
+  source: string | null;
+  createdAt: Date;
+  createdByName: string | null;
 }
 
 // Money is returned as text rather than a JS number: a Decimal(15,2) budget
@@ -140,6 +158,40 @@ export async function findByIdOrSlug(idOrSlug: string): Promise<ProjectDetail | 
   `);
 
   return rows[0] ?? null;
+}
+
+// createdByName is a LEFT JOIN (not INNER) since ProjectUpdate.createdById
+// is optional in the schema — system-generated or bulk-imported updates
+// may have no attributed user, and the timeline should still render those
+// rather than silently dropping them.
+export async function findUpdatesByProjectId(
+  projectId: string,
+  pagination: ProjectUpdatesQuery,
+): Promise<{ rows: ProjectUpdateItem[]; total: number }> {
+  const offset = (pagination.page - 1) * pagination.limit;
+
+  const rows = await prisma.$queryRaw<ProjectUpdateItem[]>(Prisma.sql`
+    SELECT
+      pu.id, pu.project_id as "projectId", pu.type, pu.title, pu.description,
+      pu.progress_at_time as "progressAtTime",
+      pu.update_date as "updateDate",
+      pu.source,
+      pu.created_at as "createdAt",
+      u.full_name as "createdByName"
+    FROM project_updates pu
+    LEFT JOIN users u ON u.id = pu.created_by
+    WHERE pu.project_id = ${projectId}::uuid AND pu.deleted_at IS NULL
+    ORDER BY pu.update_date DESC, pu.created_at DESC
+    LIMIT ${pagination.limit} OFFSET ${offset}
+  `);
+
+  const countRows = await prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+    SELECT COUNT(*)::bigint as count
+    FROM project_updates pu
+    WHERE pu.project_id = ${projectId}::uuid AND pu.deleted_at IS NULL
+  `);
+
+  return { rows, total: Number(countRows[0].count) };
 }
 
 type CreateProjectData = CreateProjectInput & { slug: string; cityId: string; regionId: string };

@@ -52,3 +52,12 @@ export const projectQuerySchema = paginationQuerySchema.extend({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 export type ProjectQuery = z.infer<typeof projectQuerySchema>;
+
+// Timeline entries for a single project's detail page. Default limit is
+// higher than the general pagination default (20) since a project's full
+// update history is usually meant to be read as one continuous timeline,
+// not paged through.
+export const projectUpdatesQuerySchema = paginationQuerySchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type ProjectUpdatesQuery = z.infer<typeof projectUpdatesQuerySchema>;
